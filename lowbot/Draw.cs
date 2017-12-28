@@ -229,10 +229,32 @@ namespace lowbot
             return InfoSet;
         }
 
-        public static int DrawCards(string History, string Cards, ref string Hand, int Action)
+        public static int DrawCards(string History, string Cards, ref string Hand, int ActionNumber)
         {
             string[] Draws = History.Split('(', ')').Where(e => e != "").Where((e, i) => i % 2 == 1).ToArray();
+            int LastCard = 2 * NUM_CARDS;
+            foreach (char c in String.Join("", Draws))
+                LastCard += (int)Char.GetNumericValue(c);
 
+            string s = Convert.ToString(ActionNumber, 2);
+            string Action = new string('0', NUM_CARDS - s.Length) + s;
+
+            string OldHand = Hand.Substring(Hand.Length - NUM_CARDS, NUM_CARDS);
+            string NewHand = "";
+
+            for (int i = 0; i < NUM_CARDS; i++)
+            {
+                if (Action[i] == '0')
+                    NewHand += OldHand[i];
+                else
+                {
+                    NewHand += Cards[LastCard];
+                    LastCard++;
+                }
+            }
+
+            Hand += NewHand;
+            return Action.Count(e => e == '1');
         }
 
         private static int[] GetHandValue(string Hand)
