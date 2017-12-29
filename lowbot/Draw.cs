@@ -6,18 +6,18 @@ namespace lowbot
 {
     internal class Draw
     {
-        private const int NUM_CARDS = 13;
-        private const int NUM_SUITS = 4;
-        private const int HAND_CARDS = 5;
-        private const string DRAW = "DRAW";
-        private const string LAST_DRAW = "LAST_DRAW";
-        private const string TERMINAL_FOLD = "TERMINAL_FOLD";
-        private const string TERMINAL_CALL = "TERMINAL_CALL";
-        private const int NUM_DRAWS = 3;
-        private const int SB_ROUNDS = 2;
-        private const int CAP = 4;
-        private const double SMALL_BET = 1.0;
-        private const double BIG_BET = 2.0;
+        public const int NUM_CARDS = 5;
+        public const int NUM_SUITS = 4;
+        public const int HAND_CARDS = 2;
+        public const string DRAW = "DRAW";
+        public const string LAST_DRAW = "LAST_DRAW";
+        public const string TERMINAL_FOLD = "TERMINAL_FOLD";
+        public const string TERMINAL_CALL = "TERMINAL_CALL";
+        public const int NUM_DRAWS = 1;
+        public const int SB_ROUNDS = 2;
+        public const int CAP = 2;
+        public const double SMALL_BET = 1.0;
+        public const double BIG_BET = 2.0;
 
 
         private static readonly Dictionary<int, char> ValuesToSigns = new Dictionary<int, char>
@@ -198,7 +198,7 @@ namespace lowbot
             int[] Value1 = GetHandValue(Hand1);
             int[] Value2 = GetHandValue(Hand2);
 
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < Value1.Length; i++)
             {
                 if (Value1[i] < Value2[i])
                     return 1;
@@ -211,8 +211,8 @@ namespace lowbot
 
         public static string CreateInfoSet(string History, string Hand)
         {
-            string InfoSet = Hand.Substring(0, NUM_CARDS);
-            int index = NUM_CARDS;
+            string InfoSet = Hand.Substring(0, HAND_CARDS);
+            int index = HAND_CARDS;
             int p = 0;
 
             while (p < History.Length)
@@ -220,8 +220,8 @@ namespace lowbot
                 InfoSet += History[p];
                 if (History[p] == ')' && index < Hand.Length)
                 {
-                    InfoSet += Hand.Substring(index, NUM_CARDS);
-                    index += NUM_CARDS;
+                    InfoSet += Hand.Substring(index, HAND_CARDS);
+                    index += HAND_CARDS;
                 }
                 p++;
             }
@@ -229,20 +229,20 @@ namespace lowbot
             return InfoSet;
         }
 
-        public static int DrawCards(string History, string Cards, ref string Hand, int ActionNumber)
+        public static int DrawCards(string History, string Cards, string Hand, ref string AfterHand, int ActionNumber)
         {
             string[] Draws = History.Split('(', ')').Where(e => e != "").Where((e, i) => i % 2 == 1).ToArray();
-            int LastCard = 2 * NUM_CARDS;
+            int LastCard = 2 * HAND_CARDS;
             foreach (char c in String.Join("", Draws))
                 LastCard += (int)Char.GetNumericValue(c);
 
             string s = Convert.ToString(ActionNumber, 2);
-            string Action = new string('0', NUM_CARDS - s.Length) + s;
+            string Action = new string('0', HAND_CARDS - s.Length) + s;
 
-            string OldHand = Hand.Substring(Hand.Length - NUM_CARDS, NUM_CARDS);
+            string OldHand = Hand.Substring(Hand.Length - HAND_CARDS, HAND_CARDS);
             string NewHand = "";
 
-            for (int i = 0; i < NUM_CARDS; i++)
+            for (int i = 0; i < HAND_CARDS; i++)
             {
                 if (Action[i] == '0')
                     NewHand += OldHand[i];
@@ -253,7 +253,7 @@ namespace lowbot
                 }
             }
 
-            Hand += NewHand;
+            AfterHand = Hand + Draw.SortHand(NewHand);
             return Action.Count(e => e == '1');
         }
 
@@ -269,16 +269,23 @@ namespace lowbot
                 .ThenByDescending(e => e.Key)
                 .ToList();
 
-            if (Counts[0].Count() == 4) // Four of a kind
-                return new int[6] { 10, Counts[0].Key, 0, 0, 0, 0 };
-            if (Counts[0].Count() == 3 && Counts[1].Count() == 2) // Full house
-                return new int[6] { 9, Counts[0].Key, Counts[1].Key, 0, 0, 0 };
-            if (Counts[0].Count() == 2 && Counts[1].Count() == 2) // Two pairs
-                return new int[6] { 8, Counts[0].Key, Counts[1].Key, Counts[2].Key, 0, 0 };
-            if (Counts[0].Count() == 2) // Pair
-                return new int[6] { 7, Counts[0].Key, Counts[1].Key, Counts[3].Key, Counts[3].Key, 0 };
+            //if (Counts[0].Count() == 4) // Four of a kind
+            //    return new int[6] { 10, Counts[0].Key, 0, 0, 0, 0 };
+            //if (Counts[0].Count() == 3 && Counts[1].Count() == 2) // Full house
+            //    return new int[6] { 9, Counts[0].Key, Counts[1].Key, 0, 0, 0 };
+            //if (Counts[0].Count() == 3) // Three of a kind
+            //    return new int[6] { 9, Counts[0].Key, Counts[1].Key, Counts[2].Key, 0, 0 };
+            //if (Counts[0].Count() == 2 && Counts[1].Count() == 2) // Two pairs
+            //    return new int[6] { 8, Counts[0].Key, Counts[1].Key, Counts[2].Key, 0, 0 };
+            //if (Counts[0].Count() == 2) // Pair
+            //    return new int[6] { 7, Counts[0].Key, Counts[1].Key, Counts[2].Key, Counts[3].Key, 0 };
 
-            return new int[6] { 6, Counts[0].Key, Counts[1].Key, Counts[3].Key, Counts[3].Key, Counts[4].Key };
+            //return new int[6] { 6, Counts[0].Key, Counts[1].Key, Counts[2].Key, Counts[3].Key, Counts[4].Key };
+
+            if (Counts[0].Count() == 2) // Pair
+                return new int[3] { 1, Counts[0].Key, 0 };
+            else
+                return new int[3] { 0, Counts[0].Key, Counts[1].Key };
         }
     }
 }
