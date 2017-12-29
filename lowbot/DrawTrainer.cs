@@ -1,26 +1,21 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Timers;
 using System.Collections.Concurrent;
+using System.IO;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace lowbot
 {
     internal class DrawTrainer
     {
         private readonly int iterations;
-        private ConcurrentDictionary<String, Node> NodeMap = new ConcurrentDictionary<string, Node>();
+        private readonly int num_threads;
+        private static ConcurrentDictionary<String, Node> NodeMap = new ConcurrentDictionary<string, Node>();
 
-
-        public DrawTrainer(int iter, int id)
+        public DrawTrainer(int iter, int nt)
         {
             iterations = iter;
-        }
-
-        public DrawTrainer(int iter, int id, ConcurrentDictionary<String, Node> Nodes)
-        {
-            iterations = iter;
-            NodeMap = Nodes;
+            num_threads = nt;
         }
 
         public void SaveToFile(string FileName)
@@ -38,35 +33,38 @@ namespace lowbot
             }
         }
 
-        private void Train(int iter)
+        private double Train(int iter, int ID)
         {
             double Util = 0.0;
 
             for (int i = 1; i <= iter; i++)
             {
-                Iteration(i, iter);
+                Util += Iteration(i, iter);
             }
 
-            Console.WriteLine("Average game value: {0}", Util / iter);
-            SaveToFile("strategy.csv");
+            return Util;
+            //Console.WriteLine("Average game value: {0}", Util / iter);
+            //if (ID == 2) 
+            //    SaveToFile("strategy.csv");
         }
 
-        private void Iteration(int i, int iter)
+        private double Iteration(int i, int iter)
         {
             string Deck = Draw.GenerateDeck();
             string Hand1 = Draw.SortHand(Deck.Substring(0, Draw.HAND_CARDS));
             string Hand2 = Draw.SortHand(Deck.Substring(Draw.HAND_CARDS, Draw.HAND_CARDS));
 
-            CFR(Deck, "r", Hand1, Hand2, 1, 1);
+            double Util = CFR(Deck, "r", Hand1, Hand2, 1, 1);
 
             Console.WriteLine("Iteration {0} / {1}", i, iter);
-            if (i % 100000 == 0)
-                SaveToFile("strategy_" + Convert.ToString(i / 100000) + ".csv");
+
+            return Util;
+            //if (i % 100000 == 0)
+            //    SaveToFile("strategy_" + Convert.ToString(i / 100000) + ".csv");
         }
 
         private double CFR(string Deck, string History, string Hand1, string Hand2, double p0, double p1)
         {
-
             //if (p1 + p0 < 1e-5)
             //{
             //    return 0;
@@ -91,24 +89,20 @@ namespace lowbot
 
             Node Node = null;
             int NumActions;
-            if (NodeMap.ContainsKey(InfoSet))
+
+            if (Actions == Draw.DRAW || Actions == Draw.LAST_DRAW)
+                NumActions = (int)Math.Pow(2, Draw.HAND_CARDS);
+            else
+                NumActions = Actions.Length;
+            Node = new Node(NumActions, Actions, InfoSet);
+
+            if (!NodeMap.TryAdd(InfoSet, Node))
             {
                 Node = NodeMap[InfoSet];
-                NumActions = Node.NumActions;
                 Node.Count++;
             }
-            else
-            {
-                if (Actions == Draw.DRAW || Actions == Draw.LAST_DRAW)
-                    NumActions = (int)Math.Pow(2, Draw.HAND_CARDS);
-                else
-                    NumActions = Actions.Length;
-                Node = new Node(NumActions, Actions, InfoSet);
 
-                NodeMap.Add(InfoSet, Node);
-            }
-
-            double[] Strategy = Node.GetStrategy((Player == 0) ? p0 : p1);
+            double[] Strategy = GetStrategy(Node, (Player == 0) ? p0 : p1);
 
             double[] Util = new double[NumActions];
             double NodeUtil = 0.0;
@@ -144,9 +138,51 @@ namespace lowbot
             return NodeUtil;
         }
 
+        public double[] GetStrategy(Node Node, double RealizationWeight)
+        {
+            double NormalizingSum = 0.0;
+            double[] Strategy = new double[Node.NumActions];
+
+            for (int i = 0; i < Node.NumActions; i++)
+            {
+                Strategy[i] = (Node.RegretSum[i] > 0) ? Node.RegretSum[i] : 0;
+                NormalizingSum += Strategy[i];
+            }
+
+            for (int i = 0; i < Node.NumActions; i++)
+            {
+                if (NormalizingSum > 0)
+                    Strategy[i] /= NormalizingSum;
+                else
+                    Strategy[i] = 1.0 / Node.NumActions;
+
+                Node.StrategySum[i] += RealizationWeight * Strategy[i];
+            }
+
+            return Strategy;
+        }
+
         public void main()
         {
-            Train(iterations);
+            //Task T1 = Task.Factory.StartNew(() => Train(iterations / 2, 1));
+            //Task T2 = Task.Factory.StartNew(() => Train(iterations / 2, 2));
+            //Task T3 = Task.Factory.StartNew(() => Train(iterations / 4, 3));
+            //Task T4 = Task.Factory.StartNew(() => Train(iterations / 4, 4));
+            //T1.Wait();
+            //T2.Wait();
+            //T3.Wait();
+            //T4.Wait();
+            //Train(iterations, 1);
+
+            List<Task<double>> Tasks = new List<Task<double>>();
+            double Util = 0.0;
+            for (int i = 0; i < num_threads; i++)
+                Tasks.Add(Task.Factory.StartNew<double>(() => Train(iterations / num_threads, i)));
+            foreach (Task<double> T in Tasks)
+                Util += T.Result;
+
+            Console.WriteLine("Average game value: {0}", Util / iterations);
+            SaveToFile("strategy.csv");
         }
     }
 }

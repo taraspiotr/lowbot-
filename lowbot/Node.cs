@@ -71,7 +71,7 @@ namespace lowbot
 
         public override string ToString()
         {
-            return String.Format("{0},{1},{2}", InfoSet, Count, String.Join(',', GetAverageStrategy()));
+            return String.Format("{0};{1};{2}", InfoSet, Count, String.Join(';', GetAverageStrategy()));
         }
     }
 }

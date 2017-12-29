@@ -11,11 +11,9 @@ namespace lowbot
         {
             Stopwatch StopWatch = new Stopwatch();
             StopWatch.Start();
-
-            //Run();
-            DrawTrainer T = new DrawTrainer(100000, 0);
+            
+            DrawTrainer T = new DrawTrainer(2000000, 4);
             T.main();
-            //T.SaveToFile("strategy.csv");
 
             StopWatch.Stop();
             Console.WriteLine("Runtime = {0}s", StopWatch.ElapsedMilliseconds / 1000);
