@@ -1,21 +1,19 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace lowbot
 {
-    class Node
+    public class Node
     {
-        public readonly int NumActions;
-        public readonly string Actions;
-        public readonly string InfoSet;
+        public int NumActions;
+        public string Actions;
+        public string InfoSet;
         public double[] RegretSum;
         public double[] Strategy;
         public double[] StrategySum;
         public double Realization;
         public int Count;
 
-        public Node(int num_actions, string ac, string info)
+        public void Init(int num_actions, string ac, string info)
         {
             Count = 1;
             Realization = 0.0;

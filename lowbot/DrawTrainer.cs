@@ -1,8 +1,8 @@
 ﻿using System;
-using System.Collections.Concurrent;
-using System.IO;
-using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading.Tasks;
+using System.Xml;
 
 namespace lowbot
 {
@@ -10,7 +10,9 @@ namespace lowbot
     {
         private readonly int iterations;
         private readonly int num_threads;
-        private static ConcurrentDictionary<String, Node> NodeMap = new ConcurrentDictionary<string, Node>();
+        private readonly string path;
+        private Stopwatch watch;
+        private static SerializableDictionary<String, Node> NodeMap = new SerializableDictionary<string, Node>();
 
         public DrawTrainer(int iter, int nt)
         {
@@ -18,37 +20,52 @@ namespace lowbot
             num_threads = nt;
         }
 
-        public void SaveToFile(string FileName)
+        public DrawTrainer(int iter, int nt, string file)
         {
-            string Path = @"E:\Lowbot\";
-            using (StreamWriter File = new StreamWriter(Path + FileName, true))
+            iterations = iter;
+            num_threads = nt;
+            path = file;
+            using (XmlReader reader = XmlReader.Create(path))
             {
-                foreach (Node n in NodeMap.Values)
-                {
-                    string Line = n.ToString();
-                    //if (n.Realization < 1e-5)
-                    //    Line += ",INFREQUENT";
-                    File.WriteLine(Line);
-                }
+                NodeMap.ReadXml(reader);
             }
         }
 
-        private double Train(int iter, int ID)
+        public void SaveToFile(string FileName)
         {
+            string Path = @"E:\Lowbot\" + FileName;
+            XmlWriterSettings settings = new XmlWriterSettings();
+            settings.Indent = true;
+            settings.OmitXmlDeclaration = true;
+            settings.NewLineOnAttributes = true;
+            settings.ConformanceLevel = ConformanceLevel.Auto;
+            using (XmlWriter writer = XmlWriter.Create(Path, settings))
+            {
+                NodeMap.WriteXml(writer);
+            }
+        }
+
+        private double Train(int iter, int ID, int bu)
+        {
+            if (ID == 0)
+            {
+                watch = new Stopwatch();
+                watch.Start();
+            }
             double Util = 0.0;
 
             for (int i = 1; i <= iter; i++)
             {
-                Util += Iteration(i, iter);
+                Util += Iteration(i, iter, ID, bu);
             }
-
+            if (ID == 0)
+            {
+                watch.Stop();
+            }
             return Util;
-            //Console.WriteLine("Average game value: {0}", Util / iter);
-            //if (ID == 2) 
-            //    SaveToFile("strategy.csv");
         }
 
-        private double Iteration(int i, int iter)
+        private double Iteration(int i, int iter, int ID, int bu)
         {
             string Deck = Draw.GenerateDeck();
             string Hand1 = Draw.SortHand(Deck.Substring(0, Draw.HAND_CARDS));
@@ -56,23 +73,36 @@ namespace lowbot
 
             double Util = CFR(Deck, "r", Hand1, Hand2, 1, 1);
 
-            Console.WriteLine("Iteration {0} / {1}", i, iter);
+            if (ID == 0 && i % 1000 == 0)
+            {
+                Console.Write("\rProgress: {0}%\tEstimated time left: {1}\t\t\t\t\t", i * 100 / iter, GetTime((watch.ElapsedMilliseconds / 1000) * (iter - i) / i));
+                
+            }
+
+            if (i % bu == 0)
+                SaveToFile("strategy_backup.xml");
 
             return Util;
-            //if (i % 100000 == 0)
-            //    SaveToFile("strategy_" + Convert.ToString(i / 100000) + ".csv");
+        }
+
+        private string GetTime(long seconds)
+        {
+            long minutes = seconds / 60;
+            seconds %= 60;
+            long hours = minutes / 60;
+            minutes %= 60;
+
+            string time = seconds.ToString() + " seconds";
+            if (minutes > 0 || hours > 0)
+                time = minutes.ToString() + " minutes " + time;
+            if (hours > 0)
+                time = hours.ToString() + " hours " + time;
+
+            return time;
         }
 
         private double CFR(string Deck, string History, string Hand1, string Hand2, double p0, double p1)
         {
-            //if (p1 + p0 < 1e-5)
-            //{
-            //    return 0;
-            //}
-
-            if (p0 < 1e-6 && p1 < 1e-6)
-                return 0;
-
             int Player = Draw.GetCurrentPlayer(History);
             int Opponent = 1 - Player;
             string PlayerHand = (Player == 0) ? Hand1 : Hand2;
@@ -85,6 +115,9 @@ namespace lowbot
             if (Actions == Draw.TERMINAL_CALL)
                 return Draw.GetPotContribution(History, Opponent) * Draw.CompareHands(PlayerHand, OpponentHand);
 
+            if (p0 == 0 && p1 == 0)
+                return 0;
+
             string InfoSet = Draw.CreateInfoSet(History, PlayerHand);
 
             Node Node = null;
@@ -94,7 +127,8 @@ namespace lowbot
                 NumActions = (int)Math.Pow(2, Draw.HAND_CARDS);
             else
                 NumActions = Actions.Length;
-            Node = new Node(NumActions, Actions, InfoSet);
+            Node = new Node();
+            Node.Init(NumActions, Actions, InfoSet);
 
             if (!NodeMap.TryAdd(InfoSet, Node))
             {
@@ -164,25 +198,18 @@ namespace lowbot
 
         public void main()
         {
-            //Task T1 = Task.Factory.StartNew(() => Train(iterations / 2, 1));
-            //Task T2 = Task.Factory.StartNew(() => Train(iterations / 2, 2));
-            //Task T3 = Task.Factory.StartNew(() => Train(iterations / 4, 3));
-            //Task T4 = Task.Factory.StartNew(() => Train(iterations / 4, 4));
-            //T1.Wait();
-            //T2.Wait();
-            //T3.Wait();
-            //T4.Wait();
-            //Train(iterations, 1);
-
             List<Task<double>> Tasks = new List<Task<double>>();
             double Util = 0.0;
             for (int i = 0; i < num_threads; i++)
-                Tasks.Add(Task.Factory.StartNew<double>(() => Train(iterations / num_threads, i)));
+            {
+                int temp = i;
+                Tasks.Add(Task.Factory.StartNew<double>(() => Train(iterations / num_threads, temp, 1000000 / num_threads)));
+            }
             foreach (Task<double> T in Tasks)
                 Util += T.Result;
 
-            Console.WriteLine("Average game value: {0}", Util / iterations);
-            SaveToFile("strategy.csv");
+            Console.WriteLine("\nAverage game value: {0}", Util / iterations);
+            SaveToFile("strategy.xml");
         }
     }
 }
